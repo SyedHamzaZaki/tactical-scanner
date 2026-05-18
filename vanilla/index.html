@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OSINT Tactical Scanner | Portable Safety Intelligence</title>
+  
+  <!-- Font and Icon Utilities -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- TailWind CSS CDN for ultra-clean and modular styling -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Custom Core Design Stylesheet -->
+  <link rel="stylesheet" href="style.css">
+
+  <!-- JS CDN Dependencies (Tesseract OCR & Native jsPDF Vector Exporter) -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body class="min-h-screen text-white font-sans bg-[#060a12] vignette relative transition-all duration-500 overflow-y-auto">
+
+  <!-- Floating Mesh Glow Accents -->
+  <div class="mesh-glow top-10 left-10" id="mesh-glow-left"></div>
+  <div class="mesh-glow-cyan bottom-10 right-10" id="mesh-glow-right"></div>
+
+  <!-- ==================== LANDING PAGE PORTAL ==================== -->
+  <section id="landing-page" class="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-[#030712] overflow-y-auto p-4 transition-all duration-500">
+    <div class="absolute inset-0 grid-bg opacity-30"></div>
+    
+    <div class="relative max-w-4xl w-full text-center space-y-8 z-10 py-10">
+      <!-- Title glowing badge -->
+      <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/5 text-emerald-400 text-xs font-mono uppercase tracking-widest mx-auto animate-pulse">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Public OSINT Diagnostic Center v3.8.0
+      </div>
+
+      <div class="space-y-4">
+        <h1 class="text-4xl md:text-7xl font-extrabold uppercase tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 via-cyan-400 to-white">
+          Tactical Scanner
+        </h1>
+        <p class="text-gray-400 text-xs md:text-sm max-w-lg mx-auto leading-relaxed tracking-wider font-light">
+          Harness next-generation Vision Intelligence and local OCR decoders to inspect threat signatures, cross-reference origins, and verify public hazards in real-time.
+        </p>
+      </div>
+
+      <!-- Feature grid cards -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-3xl mx-auto pt-6 text-left">
+        <div class="border border-white/5 bg-white/5 rounded-xl p-4 space-y-2 hover:border-emerald-500/30 transition-all group">
+          <div class="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform">
+            <i class="fa-solid fa-eye"></i>
+          </div>
+          <h3 class="text-xs uppercase font-extrabold tracking-wider text-white">Vision AI Diagnostics</h3>
+          <p class="text-[10px] text-gray-400 leading-relaxed">Multimodal LLM analysis classifies assets and analyzes structural parameters instantly.</p>
+        </div>
+
+        <div class="border border-white/5 bg-white/5 rounded-xl p-4 space-y-2 hover:border-cyan-500/30 transition-all group">
+          <div class="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center text-cyan-400 group-hover:scale-110 transition-transform">
+            <i class="fa-solid fa-keyboard"></i>
+          </div>
+          <h3 class="text-xs uppercase font-extrabold tracking-wider text-white">OCR Signatures</h3>
+          <p class="text-[10px] text-gray-400 leading-relaxed">Integrated OCR automatically extracts printed lettering from scans, linking intelligence reports.</p>
+        </div>
+
+        <div class="border border-white/5 bg-white/5 rounded-xl p-4 space-y-2 hover:border-purple-500/30 transition-all group">
+          <div class="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-400 group-hover:scale-110 transition-transform">
+            <i class="fa-solid fa-file-pdf"></i>
+          </div>
+          <h3 class="text-xs uppercase font-extrabold tracking-wider text-white">Classified Dossiers</h3>
+          <p class="text-[10px] text-gray-400 leading-relaxed">Compile target matrices, safety radius checklists, and coordinates into vector PDFs.</p>
+        </div>
+      </div>
+
+      <!-- Action buttons -->
+      <div class="pt-6 flex flex-col sm:flex-row gap-4 justify-center items-center">
+        <button id="btn-enter-scanner" class="px-8 py-3.5 bg-[#00ff88] text-black font-extrabold text-xs uppercase tracking-wider rounded-xl hover:bg-[#00d572] hover:scale-105 transition-all shadow-[0_0_30px_rgba(0,255,136,0.3)]">
+          Launch Diagnostic Workspace
+        </button>
+        <button id="btn-open-api-config" class="px-5 py-3.5 border border-white/10 hover:border-white/20 bg-white/5 rounded-xl text-xs uppercase tracking-wider text-white/70 hover:text-white transition-all">
+          <i class="fa-solid fa-key mr-1.5 text-yellow-500"></i> Configure Groq Key
+        </button>
+      </div>
+
+      <div class="pt-8 text-[9px] text-white/20 font-mono tracking-widest uppercase">
+        PORTABLE OSINT PROTOCOL // NODE: ONLINE
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ==================== CONFIGURATION DRAWER / SETTINGS PANEL ==================== -->
+  <section id="config-drawer" class="fixed top-0 right-0 h-full w-full max-w-sm z-[150] border-l border-white/10 bg-[#090f1d]/95 backdrop-blur-2xl p-6 shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col justify-between transition-transform duration-300 translate-x-full">
+    <div class="space-y-6">
+      <div class="flex items-center justify-between border-b border-white/10 pb-4">
+        <h3 class="text-sm font-bold uppercase tracking-wider text-emerald-400"><i class="fa-solid fa-sliders mr-2"></i> System Configuration</h3>
+        <button id="btn-close-config" class="text-white/40 hover:text-white text-xs px-2 py-1 hover:bg-white/5 rounded border border-white/10"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <!-- Groq Key Field -->
+      <div class="space-y-2">
+        <label class="text-[10px] uppercase tracking-wider font-extrabold text-white/60">Groq API Key</label>
+        <p class="text-[9px] text-white/40 leading-relaxed">Enables live vision analyses and chatbot interrogations. Stored locally in your browser.</p>
+        <div class="relative">
+          <input type="password" id="input-api-key" placeholder="gsk_..." class="w-full bg-black/60 border border-white/10 focus:border-emerald-500/50 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none placeholder-white/15 text-white pr-9">
+          <button id="btn-toggle-key-visibility" class="absolute right-2.5 top-2.5 text-white/40 hover:text-white text-xs"><i class="fa-solid fa-eye"></i></button>
+        </div>
+        <p class="text-[8px] text-yellow-500/60"><i class="fa-solid fa-circle-info mr-1"></i> Don't have a key? The app automatically falls back to offline smart simulation!</p>
+      </div>
+
+      <!-- TTS Voice Controls -->
+      <div class="space-y-3 border-t border-white/5 pt-4">
+        <h4 class="text-[10px] uppercase font-bold text-white/60 tracking-wider">Voice Synthesis Parameters</h4>
+        <div class="space-y-2">
+          <div class="flex justify-between text-[9px] text-white/40">
+            <span>Readout Speed (Rate)</span>
+            <span id="label-voice-rate">1.0x</span>
+          </div>
+          <input type="range" id="range-voice-rate" min="0.5" max="2" step="0.1" value="1.0" class="w-full accent-emerald-400 bg-white/5 h-1 rounded-lg">
+        </div>
+
+        <div class="space-y-2">
+          <div class="flex justify-between text-[9px] text-white/40">
+            <span>Operator Pitch</span>
+            <span id="label-voice-pitch">0.95</span>
+          </div>
+          <input type="range" id="range-voice-pitch" min="0.5" max="1.5" step="0.05" value="0.95" class="w-full accent-emerald-400 bg-white/5 h-1 rounded-lg">
+        </div>
+      </div>
+    </div>
+
+    <div class="space-y-2 border-t border-white/10 pt-4">
+      <button id="btn-save-config" class="w-full py-2.5 bg-emerald-400 hover:bg-emerald-500 text-black font-extrabold text-xs uppercase tracking-wider rounded-lg transition-all">
+        Save Parameters
+      </button>
+      <button id="btn-clear-config" class="w-full py-2 border border-white/10 hover:border-red-500/40 text-white/40 hover:text-red-400 text-xs uppercase tracking-wider rounded-lg transition-all">
+        Reset to Default
+      </button>
+    </div>
+  </section>
+
+
+  <!-- ==================== MAIN WORKSPACE VIEW ==================== -->
+  <div id="scanner-workspace" class="hidden min-h-screen flex flex-col">
+    
+    <!-- DYNAMIC CORE HEADER (Locks on Active Target Image Upload!) -->
+    <header id="app-header" class="border-b border-white/5 bg-[#090f1d]/90 backdrop-blur-xl px-5 py-3.5 flex items-center justify-between sticky top-0 z-50 shadow-[0_4px_30px_rgba(0,0,0,0.4)] transition-all">
+      <div class="flex items-center gap-3">
+        <button id="btn-back-home" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/10 hover:border-emerald-500/30 hover:bg-emerald-500/5 text-xs text-white/70 hover:text-emerald-400 transition-all font-medium">
+          <span>🏡</span> Portal Home
+        </button>
+      </div>
+      
+      <div class="flex items-center gap-3">
+        <span id="header-icon" class="text-xl">🛡️</span>
+        <span id="header-title" class="text-sm font-extrabold uppercase tracking-[0.15em] bg-clip-text text-transparent bg-gradient-to-r from-[#00ff88] via-[#00e5ff] to-white">
+          Public Safety Diagnostic Center
+        </span>
+        <span id="header-badge" class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-emerald-500/20 bg-emerald-500/5 text-[9px] font-mono uppercase tracking-wider text-emerald-400">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Live Uplink
+        </span>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <!-- Visual Mode Switcher (locks upon scanning target!) -->
+        <div id="mode-switcher-container">
+          <button id="btn-toggle-ui-mode" class="text-[9px] font-bold uppercase tracking-wider px-2.5 py-1.5 border border-emerald-500/20 hover:border-emerald-500/50 rounded-lg bg-emerald-500/5 text-emerald-400 transition-all hover:scale-105">
+            🔄 Switch to Cyber HUD
+          </button>
+        </div>
+
+        <!-- Clock Telemetry -->
+        <div class="flex flex-col text-right font-mono text-[9.5px]">
+          <span id="clock-timestamp" class="text-[#00ff88] tracking-widest font-bold">2026-05-18 09:30:00 UTC</span>
+          <span id="clock-coordinates" class="opacity-30 tracking-wider font-light">GRID: 38.8951°N 77.0364°W</span>
+        </div>
+
+        <button id="btn-toggle-audio" class="text-xs opacity-50 hover:opacity-100 transition-opacity px-2 py-1 border border-white/10 rounded-lg hover:bg-white/5" title="Toggle audio channel">🔊</button>
+        <button id="btn-open-settings" class="text-xs opacity-50 hover:opacity-100 transition-opacity px-2 py-1 border border-white/10 rounded-lg hover:bg-white/5" title="System Settings"><i class="fa-solid fa-gear"></i></button>
+        <button id="btn-toggle-logs" class="text-xs opacity-50 hover:opacity-100 transition-opacity px-2 py-1 border border-white/10 rounded-lg hover:bg-white/5" title="Registry Logs">📋 <span id="badge-logs-count" class="hidden text-emerald-400 font-bold">0</span></button>
+      </div>
+    </header>
+
+    <!-- DENSE THREE-COLUMN GRID CONTAINER -->
+    <main class="flex-1 p-3 md:p-6 max-w-[1550px] mx-auto w-full">
+      
+      <!-- ==================== IDLE UPLOAD NODE (Only when no image is loaded) ==================== -->
+      <div id="idle-upload-viewport" class="flex flex-col items-center justify-center min-h-[65vh] gap-6 transition-all duration-300">
+        <div class="text-center mb-2">
+          <div id="idle-badge-icon" class="text-6xl md:text-8xl font-extrabold mb-3 text-emerald-400 animate-pulse">⬡</div>
+          <h2 id="idle-title" class="text-xl md:text-3xl font-bold tracking-widest uppercase mb-1">Public Diagnostics</h2>
+          <p id="idle-desc" class="text-[10px] md:text-xs opacity-35 tracking-[0.2em] uppercase">Identify suspicious items, environments, or risks</p>
+        </div>
+
+        <!-- 📷 Viewfinder preview container (Dynamic live camera frame) -->
+        <div id="camera-viewfinder-feed" class="hidden relative w-full max-w-md aspect-[4/3] border-2 border-emerald-500 bg-[#090f1d] rounded-xl overflow-hidden flex flex-col justify-between p-3">
+          <div class="absolute top-2 left-2 flex items-center gap-1.5 bg-black/60 border border-red-500/20 px-2 py-0.5 rounded text-[8px] font-mono text-red-500 tracking-wider z-20">
+            <span class="w-1.5 h-1.5 bg-red-500 rounded-full animate-ping"></span>
+            LIVE OPTICAL STREAM
+          </div>
+
+          <div class="absolute inset-0 z-0 pointer-events-none flex items-center justify-center">
+            <div class="w-32 h-32 border border-dashed border-emerald-400 rounded-full animate-spin opacity-20"></div>
+            <div class="w-px h-full absolute bg-emerald-400 opacity-10"></div>
+            <div class="h-px w-full absolute bg-emerald-400 opacity-10"></div>
+          </div>
+
+          <video id="webcam-preview" autoplay playsinline class="w-full h-full object-cover rounded-lg absolute inset-0 z-10"></video>
+
+          <div class="absolute bottom-3 left-0 w-full z-20 px-4 flex gap-2">
+            <button id="btn-camera-capture" class="flex-1 py-2 bg-emerald-400 hover:bg-emerald-500 text-black font-extrabold text-xs uppercase tracking-wider rounded-lg shadow-lg transition-all hover:scale-105">
+              [ Capture Target ]
+            </button>
+            <button id="btn-camera-abort" class="px-4 py-2 border border-white/10 hover:border-red-500/50 bg-black/70 hover:bg-red-500/10 rounded-lg text-xs font-bold uppercase tracking-wider text-red-400 transition-all">
+              Cancel
+            </button>
+          </div>
+        </div>
+
+        <!-- Drag & Drop container box -->
+        <div id="dropzone-box" class="relative w-full max-w-md aspect-[4/3] border-2 border-dashed border-white/10 hover:border-emerald-500/50 hover:bg-emerald-500/5 rounded-lg flex flex-col items-center justify-center gap-3 cursor-pointer transition-all group">
+          <div class="absolute top-2 left-2 w-5 h-5 border-t-2 border-l-2 border-white/10 group-hover:border-emerald-500"></div>
+          <div class="absolute top-2 right-2 w-5 h-5 border-t-2 border-r-2 border-white/10 group-hover:border-emerald-500"></div>
+          <div class="absolute bottom-2 left-2 w-5 h-5 border-b-2 border-l-2 border-white/10 group-hover:border-emerald-500"></div>
+          <div class="absolute bottom-2 right-2 w-5 h-5 border-b-2 border-r-2 border-white/10 group-hover:border-emerald-500"></div>
+          
+          <svg class="w-10 h-10 opacity-25 group-hover:opacity-60 transition-opacity" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p class="text-xs font-semibold uppercase tracking-wider opacity-60 group-hover:opacity-95 transition-opacity">Select Photo to Scan</p>
+          <p class="text-[10px] opacity-35">Drag & drop or click to upload</p>
+          
+          <input type="file" id="input-target-file" accept="image/*" class="hidden">
+        </div>
+
+        <!-- Camera Trigger -->
+        <button id="btn-camera-trigger" class="text-[10px] uppercase tracking-wider border border-white/10 text-white/50 hover:text-white hover:bg-white/5 px-4 py-1.5 rounded transition-all hover:scale-105">
+          📷 Open Live Diagnostic Camera
+        </button>
+
+        <div class="flex gap-4 text-[9px] opacity-20 font-mono">
+          <span class="flex items-center gap-1.5"><span class="w-1 h-1 rounded-full bg-[#00ff88]"></span>SECURE</span>
+          <span class="flex items-center gap-1.5"><span className="w-1 h-1 rounded-full bg-[#00ff88]"></span>ENCRYPTED</span>
+          <span class="flex items-center gap-1.5"><span class="w-1 h-1 rounded-full bg-[#00ff88]"></span>AI READY</span>
+        </div>
+      </div>
+
+
+      <!-- ==================== THREE-COLUMN ACTIVE REPORT MATRIX ==================== -->
+      <div id="active-scanner-view" class="hidden grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
+        
+        <!-- COLUMN 1: IMAGE VIEWPORT & LIVE ACTIVITY SYSTEM LOG CONSOLE -->
+        <div class="flex flex-col gap-4">
+          <!-- Image Viewport Frame -->
+          <div id="image-viewport-card" class="relative border border-white/10 rounded-xl overflow-hidden bg-black/20">
+            <div class="flex items-center justify-between px-3 py-2 border-b border-white/5 bg-white/5 text-white/50">
+              <div class="flex items-center gap-2">
+                <span id="badge-scanning-indicator" class="w-1.5 h-1.5 rounded-full bg-[#00ff88]"></span>
+                <span id="badge-scanning-text" class="text-[10px] tracking-wider uppercase opacity-55">LOADED</span>
+              </div>
+              <span class="text-[10px] opacity-25">DIAGNOSTIC DISPLAY</span>
+            </div>
+            
+            <div class="relative aspect-video flex items-center justify-center bg-black/60">
+              <img id="loaded-target-image" src="" alt="Target Signature" class="max-w-full max-h-full object-contain">
+              
+              <!-- Orbital Sweep Track Metrics Overlay -->
+              <div id="tactical-orbital-metrics" class="hidden absolute top-2 left-2 font-mono text-[8px] text-[#00ff88]/60 bg-black/75 px-1.5 py-0.5 border border-[#00ff88]/10">
+                SYS_TRACK: ORBITAL-7 // SPEED: 7.82km/s
+              </div>
+
+              <!-- Corner HUD indicators -->
+              <div class="absolute inset-3 pointer-events-none">
+                <div class="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-white/10" id="corner-tl"></div>
+                <div class="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-white/10" id="corner-tr"></div>
+                <div class="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 border-white/10" id="corner-bl"></div>
+                <div class="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-white/10" id="corner-br"></div>
+              </div>
+              
+              <div class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-15">
+                <div class="w-px h-full absolute bg-white/10" id="grid-y"></div>
+                <div class="h-px w-full absolute bg-white/10" id="grid-x"></div>
+                <div class="w-16 h-16 border border-white/10 rounded-full absolute pulse-ring"></div>
+              </div>
+              
+              <!-- Scanning moving bar line overlay -->
+              <div id="scanning-laser-line" class="hidden absolute left-0 w-full h-0.5 z-20"></div>
+            </div>
+
+            <!-- Scanning slider progress -->
+            <div id="progress-bar-container" class="hidden h-0.5 bg-black/60">
+              <div id="progress-bar" class="h-full bg-emerald-500 transition-all duration-300" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <!-- Parameter Index Grid under Image -->
+          <div id="parameters-index-panel" class="grid grid-cols-3 gap-2">
+            <div class="border border-white/5 bg-white/5 rounded-lg p-2.5 text-center">
+              <p class="text-[9px] uppercase tracking-wider opacity-35 mb-0.5">Reference ID</p>
+              <p id="label-target-id" class="text-xs font-bold text-[#00e5ff]">-</p>
+            </div>
+            <div class="border border-white/5 bg-white/5 rounded-lg p-2.5 text-center">
+              <p class="text-[9px] uppercase tracking-wider opacity-35 mb-0.5">Accuracy Index</p>
+              <p id="label-confidence" class="text-xs font-bold glow-text text-white">-</p>
+            </div>
+            <div id="threat-rating-box" class="border border-white/5 bg-white/5 rounded-lg p-2.5 text-center">
+              <p class="text-[9px] uppercase tracking-wider opacity-35 mb-0.5">Threat Level</p>
+              <p id="label-threat-level" class="text-xs font-bold">-</p>
+            </div>
+          </div>
+
+          <!-- Live Activity System Log Console -->
+          <div class="border border-white/5 bg-black/40 rounded-xl overflow-hidden flex flex-col" style="min-height: 180px; max-height: 230px;">
+            <div class="flex items-center gap-2 px-3 py-2 border-b border-white/5 bg-white/5 text-white/50">
+              <div class="flex gap-1">
+                <div class="w-2 h-2 rounded-full bg-red-500/50"></div>
+                <div class="w-2 h-2 rounded-full bg-yellow-500/50"></div>
+                <div class="w-2 h-2 rounded-full bg-green-500/50"></div>
+              </div>
+              <span class="text-[10px] tracking-wider opacity-35 ml-1 uppercase">Activity Log</span>
+            </div>
+            
+            <div id="console-logs-scroll" class="flex-1 overflow-y-auto p-3 text-[11px] space-y-0.5 font-mono">
+              <!-- Dynamically populated terminal scripts -->
+            </div>
+
+            <!-- Terminal Command Prompt Input (Cyber mode only) -->
+            <form id="console-cli-form" class="hidden border-t border-[#00ff88]/15 bg-black/80 flex items-center px-2.5 py-1.5 gap-1.5">
+              <span class="text-[#00ff88]/40 text-[10px] font-mono">&gt;</span>
+              <input type="text" id="input-cli-command" placeholder="Type command (/scan, /export, /reset)..." class="bg-transparent border-none outline-none focus:outline-none text-[10px] text-[#00ff88] placeholder-[#00ff88]/20 flex-1 font-mono">
+            </form>
+          </div>
+
+          <!-- Intercepted Comms Text (OCR Card) -->
+          <div id="ocr-extracted-card" class="hidden border border-white/5 bg-white/5 rounded-xl overflow-hidden">
+            <div class="flex items-center justify-between px-3 py-2 border-b border-white/5 bg-white/5 text-emerald-400">
+              <span class="text-[10px] tracking-wider uppercase font-bold">Extracted Image Text</span>
+              <span class="text-[9px] opacity-35 uppercase">OCR PAYLOAD</span>
+            </div>
+            <div id="ocr-payload-text" class="p-3 text-[11px] font-mono leading-relaxed max-h-32 overflow-y-auto whitespace-pre-wrap select-all bg-black/40 text-white/80">
+              <!-- OCR results printed here -->
+            </div>
+          </div>
+        </div>
+
+        <!-- COLUMN 2: THREAT DIAGNOSTIC DOSSIER -->
+        <div class="flex flex-col gap-4">
+          <div id="report-dossier-card" class="border border-white/10 bg-white/5 rounded-xl overflow-hidden flex flex-col h-full justify-between">
+            <div>
+              <div class="flex items-center justify-between px-4 py-3.5 border-b border-white/5 bg-white/5">
+                <div class="flex items-center gap-2">
+                  <span id="report-indicator-dot" class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                  <span id="report-indicator-title" class="text-[11px] font-bold tracking-[0.15em] uppercase text-emerald-400">Diagnostic Threat Report</span>
+                </div>
+                <span class="text-[9px] uppercase tracking-wider px-1.5 py-0.5 border border-white/10 rounded opacity-60 text-white">Public Assessment</span>
+              </div>
+              
+              <div class="p-4 space-y-4 text-xs">
+                
+                <!-- Safety Score Circle (Civilian mode only) -->
+                <div id="civilian-safety-score-card" class="flex items-center justify-between p-3.5 rounded-xl border border-white/5 bg-white/5 shadow-inner">
+                  <div class="space-y-0.5">
+                    <h4 class="text-[10px] uppercase font-bold text-white/50 tracking-wider">Public Safety Rating</h4>
+                    <p class="text-[9px] text-white/40">Evaluation index for civilian risk mitigation.</p>
+                  </div>
+                  <div class="relative w-12 h-12 flex items-center justify-center">
+                    <svg class="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                      <path class="text-white/10" strokeWidth="3" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                      <path id="svg-safety-score-ring" class="text-emerald-400" strokeWidth="3.5" stroke-dasharray="100, 100" stroke-linecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                    </svg>
+                    <span id="label-safety-score-percent" class="absolute text-[10px] font-extrabold text-emerald-400">100%</span>
+                  </div>
+                </div>
+
+                <!-- Tactical hardware gains matrix -->
+                <div id="tactical-hardware-gains-panel" class="hidden grid grid-cols-2 gap-1.5 p-3.5 border border-[#00ff88]/10 bg-black/30 rounded-lg font-mono text-[9px] text-[#00ff88]/60">
+                  <div>SPECTRAL GAIN: 8.42 dB</div>
+                  <div>POLARITY: VERTICAL</div>
+                  <div>BANDWIDTH: 450 MHz</div>
+                  <div>DECRYPTION: ACTIVE (AES)</div>
+                </div>
+
+                <div>
+                  <p class="text-[9px] uppercase tracking-wider opacity-35 mb-0.5">Classification</p>
+                  <p id="report-classification" class="font-bold text-sm text-white">-</p>
+                </div>
+
+                <!-- Detail grid fields (Origin matrix, Safety Standoff Radius, RCS index) -->
+                <div class="grid grid-cols-2 gap-3 pt-2.5 border-t border-white/5">
+                  <div>
+                    <p class="text-[9px] uppercase tracking-wider opacity-35 mb-0.5">Involved Origin</p>
+                    <p id="report-origin" class="font-bold opacity-80 text-white">-</p>
+                  </div>
+                  <div>
+                    <p class="text-[9px] uppercase tracking-wider opacity-35 mb-0.5">Standoff Radius</p>
+                    <p id="report-safety-radius" class="font-bold opacity-80 text-emerald-400">-</p>
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3 pt-2 border-t border-white/5">
+                  <div>
+                    <p class="text-[9px] uppercase tracking-wider opacity-35 mb-0.5">Radar Profile (RCS)</p>
+                    <p id="report-rcs" class="font-bold opacity-80 text-cyan-400">-</p>
+                  </div>
+                  <div>
+                    <p class="text-[9px] uppercase tracking-wider opacity-35 mb-0.5">Threat Evaluation</p>
+                    <p id="report-threat-level-value" class="font-bold opacity-80 text-white">-</p>
+                  </div>
+                </div>
+
+                <div class="pt-2 border-t border-white/5">
+                  <p class="text-[9px] uppercase tracking-wider opacity-35 mb-0.5">Hazard Potential & Utility</p>
+                  <p id="report-potential" class="opacity-80 leading-relaxed italic text-orange-400">-</p>
+                </div>
+
+                <div>
+                  <p class="text-[9px] uppercase tracking-wider opacity-35 mb-0.5">Assessment Details</p>
+                  <p id="report-description" class="opacity-75 leading-relaxed">-</p>
+                </div>
+
+                <!-- Civilian Safety Guidelines Card -->
+                <div id="civilian-safety-protocol-card" class="border border-emerald-500/20 bg-emerald-950/10 rounded-xl p-3.5 space-y-2">
+                  <h4 class="text-[10px] uppercase font-bold text-emerald-400 tracking-wider flex items-center gap-1.5">🛡️ Civilian Safety Actions</h4>
+                  <div class="grid grid-cols-1 gap-1 font-mono text-[9px] text-white/70">
+                    <div class="flex items-center gap-1.5">✅ 1. Keep secure observation distance from target</div>
+                    <div class="flex items-center gap-1.5">✅ 2. In case of high/critical danger, report immediately</div>
+                    <div class="flex items-center gap-1.5">✅ 3. Follow local municipal warning directives</div>
+                  </div>
+                  <p class="text-[8px] opacity-40 uppercase pt-1">EMERGENCY SERVICES: 911 / 112</p>
+                </div>
+
+                <div class="border-t border-white/10 pt-3">
+                  <p class="text-[9px] uppercase tracking-wider opacity-35 mb-0.5">Public Recommendation</p>
+                  <p id="report-recommendations" class="opacity-70 italic">-</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Bottom utility buttons -->
+            <div class="p-4 border-t border-white/5 bg-black/10 flex gap-2 flex-wrap">
+              <button id="btn-export-pdf" class="flex-1 min-w-[80px] py-2.5 border border-white/20 rounded-lg text-[10px] font-bold uppercase tracking-wider text-white hover:bg-white/5 transition-all">📄 Export PDF</button>
+              <button id="btn-vocal-readout" class="flex-1 min-w-[80px] py-2.5 border border-emerald-500/20 hover:border-emerald-500/50 rounded-lg text-[10px] font-bold uppercase tracking-wider text-emerald-400 hover:bg-[#00ff88]/5 transition-all">🔊 Vocal Readout</button>
+              <button id="btn-reset-scan" class="flex-1 min-w-[80px] py-2.5 border border-white/10 hover:bg-white/5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all text-white">New Diagnostic</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- COLUMN 3: OPERATIONAL INTERROGATION TERMINAL (CHAT) & PREVIOUS LOGS -->
+        <div class="flex flex-col gap-4">
+          <!-- Interrogation Chat Box -->
+          <div id="ai-interrogation-card" class="border border-white/5 bg-black/40 rounded-xl overflow-hidden flex flex-col flex-1 min-h-[300px] justify-between">
+            <div>
+              <div class="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-white/5 text-emerald-400">
+                <span class="text-[10px] tracking-wider uppercase font-bold">Ask AI Safety Assistant</span>
+                <span class="text-[9px] opacity-35 uppercase">DIRECT RESPONSE LINK</span>
+              </div>
+              
+              <!-- Chat scrollbox -->
+              <div id="chat-messages-container" class="p-3 max-h-[320px] overflow-y-auto space-y-2.5 font-mono text-[10px]">
+                <div id="chat-empty-state" class="text-center py-8 opacity-25 uppercase text-[9px] tracking-wider">
+                  No queries initiated. Type below to interrogate the active target signature.
+                </div>
+              </div>
+            </div>
+
+            <!-- Chat input form -->
+            <form id="chat-prompt-form" class="p-3.5 border-t border-white/5 bg-black/25 flex gap-2">
+              <input type="text" id="input-chat-message" placeholder="Ask safety questions or seek details..." class="flex-1 bg-black/60 border border-white/10 focus:border-emerald-500/50 focus:outline-none rounded-lg px-3 py-2 text-xs font-mono text-white placeholder-white/20">
+              <button type="submit" id="btn-chat-send" class="px-3.5 border border-white/10 rounded-lg text-[10px] uppercase font-bold tracking-wider text-white hover:bg-white/5 transition-all">Ask</button>
+            </form>
+          </div>
+
+          <!-- Slide History registry drawer panel -->
+          <div id="history-registry-drawer" class="hidden border border-white/5 rounded-xl bg-black/40 overflow-hidden">
+            <div class="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-white/5 text-white/50">
+              <h3 class="text-xs uppercase tracking-wider font-extrabold text-white">Diagnostic Registry Logs</h3>
+              <button id="btn-clear-registry" class="text-[10px] text-red-400 hover:text-red-300 uppercase tracking-widest font-bold">Clear All</button>
+            </div>
+            
+            <div id="history-list-viewport" class="p-4 space-y-3 max-h-60 overflow-y-auto">
+              <!-- Logs items loaded here -->
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </main>
+
+    <!-- FOOTER DIRECTIVES -->
+    <footer id="app-footer" class="border-t border-white/5 bg-[#090f1d]/90 backdrop-blur-xl px-5 py-3.5 flex items-center justify-between text-xs text-white/40 tracking-wider">
+      <div class="flex items-center gap-3">
+        <span id="footer-logo">🛡️ Public Safety OSINT Protocol</span>
+        <span class="opacity-20">|</span>
+        <span class="hover:text-emerald-400 transition-colors cursor-pointer">Civilian Directives</span>
+        <span class="opacity-20">|</span>
+        <span class="hover:text-emerald-400 transition-colors cursor-pointer">Emergency Dial: 911 / 112</span>
+      </div>
+      <div class="flex items-center gap-2 text-[10px] font-mono text-emerald-400/60" id="footer-channel-badge">
+        <span>SECURE PUBLIC CHANNEL</span>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- Core Javascript code -->
+  <script src="app.js"></script>
+</body>
+</html>
