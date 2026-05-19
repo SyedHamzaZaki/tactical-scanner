@@ -123,3 +123,133 @@ body::after {
   0% { background-position: 0% 0%; }
   100% { background-position: 0% 100%; }
 }
+
+/* Hexagon background for scanning */
+.hex-grid {
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='103.92304845413264' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 103.92304845413264L0 86.60254037844388L0 51.96152422706632L30 34.64101615137755L60 51.96152422706632L60 86.60254037844388Z' stroke='rgba(0, 255, 136, 0.15)' fill='none' stroke-width='1'/%3E%3Cpath d='M30 0L0 17.320508075688775L0 51.96152422706632L30 34.64101615137755L60 51.96152422706632L60 17.320508075688775Z' stroke='rgba(0, 255, 136, 0.15)' fill='none' stroke-width='1'/%3E%3C/svg%3E");
+  background-size: 30px 52px;
+}
+
+/* Vertical Matrix Rain */
+@keyframes matrixRain {
+  0% { transform: translateY(-100%); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { transform: translateY(100%); opacity: 0; }
+}
+
+.matrix-rain {
+  animation: matrixRain 2s linear infinite;
+  background: linear-gradient(180deg, transparent, rgba(0, 255, 136, 0.6), rgba(255, 255, 255, 0.8));
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(0, 255, 136, 0.3);
+  border-radius: 4px;
+}
+
+/* ==========================================
+   🖨️ HIGH-FIDELITY PRINT MEDIA QUERIES
+   Forces clean black-and-white assessment sheets
+   ========================================== */
+@media print {
+  /* Reset whole viewport scroll controls and dark color pallets */
+  body, html, #__next, .vignette, [class*="min-h-screen"] {
+    background: #ffffff !important;
+    color: #000000 !important;
+    overflow: visible !important;
+    height: auto !important;
+    min-height: unset !important;
+  }
+  
+  /* Suppress tactical digital CRT scanlines backdrop */
+  body::after {
+    display: none !important;
+  }
+
+  /* 🛠️ Hide non-printable navigation bars, side-menus, clocks, logs, chats, inputs */
+  header, 
+  nav, 
+  form, 
+  button, 
+  .md\:hidden, 
+  [title="View Logs"], 
+  [title="Toggle Sound"], 
+  [title="Toggle audio channel"],
+  [title="Registry files"],
+  /* Hide the 3rd column: AI safety chat assistant */
+  .grid > div:nth-child(3), 
+  /* Hide logs console from the 1st column */
+  .grid > div:nth-child(1) > div:nth-child(3), 
+  /* Hide OCR text from 1st column */
+  .grid > div:nth-child(1) > div:nth-child(4), 
+  /* Hide civilian safety actions */
+  .border-emerald-500\/20,
+  /* Hide all report bottom share action bars */
+  .flex-wrap, 
+  .border-t.bg-black\/10,
+  .p-4.border-t.border-white\/5.bg-black\/10 {
+    display: none !important;
+  }
+
+  /* 🎯 Force 3-column layout into stacked vertical printable sheets */
+  .grid {
+    display: block !important;
+    width: 100% !important;
+  }
+
+  /* Fit Column 1 (Image & metrics) and Column 2 (Report details) in full width */
+  .grid > div:nth-child(1),
+  .grid > div:nth-child(2) {
+    display: block !important;
+    width: 100% !important;
+    page-break-inside: avoid !important;
+    margin-bottom: 30px !important;
+    border: 1px solid #999999 !important;
+    padding: 20px !important;
+    border-radius: 12px !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Clean up border elements and shadows */
+  * {
+    color: #000000 !important;
+    text-shadow: none !important;
+    box-shadow: none !important;
+    border-color: #cccccc !important;
+    background-color: transparent !important;
+  }
+
+  /* Center target image and frame it */
+  img {
+    max-height: 280px !important;
+    object-fit: contain !important;
+    border: 1px solid #000000 !important;
+    display: block !important;
+    margin: 15px auto !important;
+  }
+
+  /* Force strong, high-contrast headings */
+  h2, h3, h4, .font-bold {
+    color: #000000 !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+  }
+
+  .border {
+    border: 1px solid #777777 !important;
+  }
+
+  /* Highlight threat level text for print clarity */
+  p[style*="color"] {
+    font-weight: bold !important;
+    text-decoration: underline !important;
+    color: #000000 !important;
+  }
+}

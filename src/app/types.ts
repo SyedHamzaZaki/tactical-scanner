@@ -18,4 +18,11 @@ export interface AnalysisResult {
   potential?: string;
   safetyRadius?: string;
   radarCrossSection?: string;
+  exifData?: {
+    lat?: number;
+    lon?: number;
+    make?: string;
+    model?: string;
+    date?: string;
+  };
 }

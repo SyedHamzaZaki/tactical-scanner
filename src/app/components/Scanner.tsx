@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import HUDClock from "./HUDClock";
 import ScanHistory, { ScanRecord } from "./ScanHistory";
 import LandingPage from "./LandingPage";
+import CommandCenter from "./CommandCenter";
 import { Audio } from "../lib/audio";
 import type { AnalysisResult } from "../types";
 
@@ -26,9 +27,54 @@ function loadHistory(): ScanRecord[] {
 }
 function saveHistory(r: ScanRecord[]) { localStorage.setItem("osint_history", JSON.stringify(r.slice(0, 20))); }
 
+function compressImage(file: File, maxW = 1200, maxH = 1200): Promise<File> {
+  return new Promise((resolve) => {
+    if (!file.type.startsWith("image/")) return resolve(file);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = typeof window !== "undefined" ? new window.Image() : null;
+      if (!img) return resolve(file);
+      img.onload = () => {
+        let w = img.width;
+        let h = img.height;
+        if (w > maxW || h > maxH) {
+          if (w > h) {
+            h = Math.round((h * maxW) / w);
+            w = maxW;
+          } else {
+            w = Math.round((w * maxH) / h);
+            h = maxH;
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, w, h);
+          canvas.toBlob((blob) => {
+            if (blob) {
+              resolve(new File([blob], file.name, { type: "image/jpeg" }));
+            } else {
+              resolve(file);
+            }
+          }, "image/jpeg", 0.85); // Compress to high-quality JPEG (85% quality)
+        } else {
+          resolve(file);
+        }
+      };
+      img.onerror = () => resolve(file);
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => resolve(file);
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function Scanner() {
   const [showLanding, setShowLanding] = useState(true);
   const [uiMode, setUiMode] = useState<"civilian" | "tactical">("civilian");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [phase, setPhase] = useState<"idle"|"scanning"|"complete"|"error">("idle");
   const [result, setResult] = useState<AnalysisResult | null>(null);
@@ -38,6 +84,7 @@ export default function Scanner() {
   const [dragActive, setDragActive] = useState(false);
   const [history, setHistory] = useState<ScanRecord[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [showCommandCenter, setShowCommandCenter] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
   
   // New features state
@@ -49,6 +96,7 @@ export default function Scanner() {
 
   // Live Camera panel states
   const [cameraActive, setCameraActive] = useState(false);
+  const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -95,20 +143,34 @@ export default function Scanner() {
     const url = URL.createObjectURL(file);
     setImageSrc(url); setResult(null); setErrorMsg(""); setPhase("scanning"); setProgress(0); setOcrText(""); setChatHistory([]);
     soundOn && Audio.upload();
-    setLines(p => [...p, "", `[SYS] IMAGE ACQUIRED — ${file.name} (${(file.size/1024).toFixed(1)}KB)`, "[SYS] INITIATING TACTICAL SCAN...", ""]);
+    setLines(p => [...p, "", `[SYS] IMAGE ACQUIRED — ${file.name} (${(file.size/1024).toFixed(1)}KB)`, "[SYS] COMPRESSING TELEMETRY RESOLUTION..."]);
 
-    const b64 = await fileToBase64(file);
+    let finalFile = file;
+    if (file.size > 800 * 1024) { // Compress files larger than ~800KB
+      try {
+        finalFile = await compressImage(file);
+        setLines(p => [...p, `[SYS] TARGET OPTIMIZED: ${(finalFile.size/1024).toFixed(1)}KB`]);
+      } catch (e) {
+        console.warn("Client side compression failed, uploading original file", e);
+      }
+    } else {
+      setLines(p => [...p, `[SYS] PAYLOAD IS ALREADY HIGHLY COMPACT.`]);
+    }
+    
+    setLines(p => [...p, "[SYS] INITIATING TACTICAL SCAN...", ""]);
+
+    const b64 = await fileToBase64(finalFile);
     let mi = 0;
     const msgI = setInterval(() => { if (mi < SCAN_MSGS.length) { log(`[SCAN] ${SCAN_MSGS[mi]}`); soundOn && Audio.scanTick(); mi++; } }, 800);
     const prgI = setInterval(() => setProgress(p => p >= 95 ? 95 : p + Math.random()*8), 400);
     soundOn && Audio.scanStart();
 
-    // Run OCR in parallel using Tesseract.js
+    // Run OCR in parallel using Tesseract.js (using optimized finalFile for speed!)
     let extractedText = "";
     const runOCR = async () => {
       try {
         const Tesseract = await import("tesseract.js");
-        const ocrRes = await Tesseract.recognize(file, "eng");
+        const ocrRes = await Tesseract.recognize(finalFile, "eng");
         extractedText = ocrRes.data.text || "";
         if (extractedText.trim()) {
           setOcrText(extractedText.trim());
@@ -118,12 +180,40 @@ export default function Scanner() {
       }
     };
     runOCR();
+    
+    // EXIF Geolocation parsing must run on the ORIGINAL uncompressed file
+    const exifPromise = import("exifr").then(m => m.default.parse(file, { gps: true, tiff: true })).catch(() => null);
 
     try {
-      const res = await fetch("/api/analyze", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({imageBase64: b64, mimeType: file.type}) });
+      const res = await fetch("/api/analyze", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({imageBase64: b64, mimeType: finalFile.type}) });
       clearInterval(msgI); clearInterval(prgI);
-      if (!res.ok) { const e = await res.json(); throw new Error(e.error || `HTTP ${res.status}`); }
+      if (!res.ok) {
+        let errMsg = `HTTP ${res.status}`;
+        try {
+          const e = await res.json();
+          errMsg = e.error || errMsg;
+        } catch {
+          try {
+            const txt = await res.text();
+            if (txt && txt.length < 150) errMsg = txt;
+          } catch {}
+        }
+        throw new Error(errMsg);
+      }
       const data: AnalysisResult = await res.json();
+      
+      const metadata = await exifPromise;
+      if (metadata) {
+        data.exifData = {
+          lat: metadata.latitude,
+          lon: metadata.longitude,
+          make: metadata.Make,
+          model: metadata.Model,
+          date: metadata.DateTimeOriginal?.toString() || metadata.CreateDate?.toString()
+        };
+        if (metadata.latitude) log(`[SYS] GEOLOCATION EXTRACTED: LAT ${metadata.latitude.toFixed(4)}, LON ${metadata.longitude.toFixed(4)}`);
+      }
+
       setProgress(100); setResult(data); setPhase("complete");
       if (data.threatLevel === "CRITICAL" || data.threatLevel === "HIGH") { soundOn && Audio.threatAlert(); } else { soundOn && Audio.scanComplete(); }
       log(""); log("[SYS] ██ SCAN COMPLETE ██"); log(`[SYS] THREAT LEVEL: ${data.threatLevel}`); log(`[SYS] CLASSIFICATION: ${data.classification}`); log("[SYS] REPORT COMPILED.");
@@ -155,21 +245,62 @@ export default function Scanner() {
     }
   };
 
-  const startCamera = async () => {
+  const startCamera = async (mode?: "environment" | "user" | any) => {
     try {
+      const actualMode = typeof mode === "string" ? mode : facingMode;
       soundOn && Audio.click();
       setCameraActive(true);
-      log("[SYS] INITIALIZING CAMERA OPTICS STREAM...");
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      log(`[SYS] INITIALIZING CAMERA OPTICS STREAM (${actualMode.toUpperCase()})...`);
+      
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        log("[ERR] SECURE CONTEXT REQUIRED (HTTPS / LOCALHOST).");
+        log("[SYS] TO TEST MOBILE CAMERA OVER LOCAL WI-FI:");
+        log("[SYS] 1. Open chrome://flags/#unsafely-treat-insecure-origin-as-secure");
+        log("[SYS] 2. Add your development URL (e.g., http://192.168.1.5:3000)");
+        log("[SYS] 3. Set to 'Enabled' and relaunch your mobile browser.");
+        throw new Error("Secure context (HTTPS/localhost) required for camera");
+      }
+
+      let stream: MediaStream;
+      try {
+        // Use soft constraint (ideal) so desktop/laptop fallback works seamlessly
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: actualMode },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }
+        });
+      } catch (err) {
+        log(`[SYS] CAM_${actualMode.toUpperCase()} CONSTRAINT ERROR. TRYING GRACEFUL FALLBACK...`);
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: actualMode } } });
+        } catch (innerErr) {
+          log(`[SYS] DEFAULTING TO STANDARD CAMERA STREAM...`);
+          stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        }
+      }
+      
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
       log("[SYS] OPTICAL STREAM ONLINE. WAITING FOR TARGET CAPTURE.");
-    } catch (err) {
-      log("[ERR] CAMERA OPTICAL STREAM ACCESS DENIED OR UNAVAILABLE");
+    } catch (err: any) {
+      log(`[ERR] CAM ERROR: ${err?.message || "ACCESS DENIED"}`);
       setCameraActive(false);
     }
+  };
+
+  const toggleCameraLens = () => {
+    soundOn && Audio.click();
+    const nextMode = facingMode === "environment" ? "user" : "environment";
+    setFacingMode(nextMode);
+    startCamera(nextMode);
   };
 
   const captureFrame = () => {
@@ -282,36 +413,173 @@ export default function Scanner() {
     CRITICAL: 5
   }[result.threatLevel] || 100 : 100;
 
+  if (showLanding) {
+    return <LandingPage onEnterScanner={() => { soundOn && Audio.click(); setShowLanding(false); }} />;
+  }
+
   return (
     <div className={`min-h-screen ${uiMode === "civilian" ? "bg-[#060a12] text-white font-sans" : "bg-[#020408] text-[#00ff88] font-mono grid-bg"} vignette relative flex flex-col transition-all duration-500`}>
+      {showCommandCenter && <CommandCenter history={history} onClose={() => setShowCommandCenter(false)} uiMode={uiMode} />}
       
+      {/* 🍔 MOBILE SIDE BAR DRAWER menu popup */}
+      <AnimatePresence>
+        {sidebarOpen && (
+          <>
+            {/* Dark overlay backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.6 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSidebarOpen(false)}
+              className="fixed inset-0 bg-black z-50 backdrop-blur-sm"
+            />
+            {/* Drawer menu */}
+            <motion.div
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className={`fixed right-0 top-0 bottom-0 w-[280px] z-50 p-6 flex flex-col justify-between border-l shadow-2xl ${
+                uiMode === "civilian"
+                  ? "bg-[#090f1d] border-white/10 text-white font-sans"
+                  : "bg-black border-[#00ff88]/30 text-[#00ff88] font-mono grid-bg"
+              }`}
+            >
+              <div className="space-y-6">
+                {/* Drawer Header */}
+                <div className="flex items-center justify-between border-b pb-4 border-white/10">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">🛡️</span>
+                    <span className="text-xs font-bold uppercase tracking-wider">
+                      {uiMode === "civilian" ? "Portal Menu" : "SYS_MENU"}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setSidebarOpen(false)}
+                    className="p-1.5 hover:bg-white/5 border border-white/10 rounded-lg text-xs"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Navigation Options list */}
+                <div className="flex flex-col gap-3">
+                  <button
+                    onClick={() => {
+                      soundOn && Audio.click();
+                      setShowLanding(true);
+                      setSidebarOpen(false);
+                    }}
+                    className={`flex items-center gap-2 w-full px-4 py-2.5 rounded-lg border text-left text-xs transition-all hover:translate-x-1 ${
+                      uiMode === "civilian"
+                        ? "border-white/10 hover:border-emerald-500/30 hover:bg-emerald-500/5 text-white"
+                        : "border-[#00ff88]/20 hover:border-[#00ff88] hover:bg-[#00ff88]/5 text-[#00ff88]"
+                    }`}
+                  >
+                    <span>🏡</span> Portal Home
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      soundOn && Audio.click();
+                      setShowCommandCenter(true);
+                      setSidebarOpen(false);
+                    }}
+                    className={`flex items-center gap-2 w-full px-4 py-2.5 rounded-lg border text-left text-xs transition-all hover:translate-x-1 ${
+                      uiMode === "civilian"
+                        ? "border-white/10 hover:border-emerald-500/30 hover:bg-emerald-500/5 text-white"
+                        : "border-[#00ff88]/20 hover:border-[#00ff88] hover:bg-[#00ff88]/5 text-[#00ff88]"
+                    }`}
+                  >
+                    <span>📊</span> Telemetry Dash
+                  </button>
+
+                  {!imageSrc && (
+                    <button
+                      onClick={() => {
+                        soundOn && Audio.click();
+                        setUiMode(uiMode === "civilian" ? "tactical" : "civilian");
+                        setSidebarOpen(false);
+                      }}
+                      className={`flex items-center gap-2 w-full px-4 py-2.5 rounded-lg border text-left text-xs transition-all hover:translate-x-1 ${
+                        uiMode === "civilian"
+                          ? "border-white/10 hover:border-emerald-500/30 hover:bg-emerald-500/5 text-white"
+                          : "border-[#00ff88]/20 hover:border-[#00ff88] hover:bg-[#00ff88]/5 text-[#00ff88]"
+                    }`}
+                  >
+                    <span>🔄</span> Switch Mode
+                  </button>
+                  )}
+
+                  <button
+                    onClick={() => {
+                      setSoundOn(!soundOn);
+                      soundOn && Audio.click();
+                    }}
+                    className={`flex items-center justify-between w-full px-4 py-2.5 rounded-lg border text-left text-xs transition-all ${
+                      uiMode === "civilian"
+                        ? "border-white/10 hover:border-emerald-500/30 hover:bg-emerald-500/5 text-white"
+                        : "border-[#00ff88]/20 hover:border-[#00ff88] hover:bg-[#00ff88]/5 text-[#00ff88]"
+                    }`}
+                  >
+                    <span>🔊 Audio Feedback</span>
+                    <span>{soundOn ? "ACTIVE" : "MUTED"}</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowHistory(!showHistory);
+                      setSidebarOpen(false);
+                    }}
+                    className={`flex items-center justify-between w-full px-4 py-2.5 rounded-lg border text-left text-xs transition-all ${
+                      uiMode === "civilian"
+                        ? "border-white/10 hover:border-emerald-500/30 hover:bg-emerald-500/5 text-white"
+                        : "border-[#00ff88]/20 hover:border-[#00ff88] hover:bg-[#00ff88]/5 text-[#00ff88]"
+                    }`}
+                  >
+                    <span>📋 Scan Registry Logs</span>
+                    <span className="font-bold text-cyan-400">{history.length}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Sidebar footer telemetry */}
+              <div className="border-t pt-4 border-white/10 space-y-2">
+                <p className="text-[8px] opacity-25 uppercase tracking-wider text-center">
+                  Omega Node // Secure Connection
+                </p>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
       {/* UPGRADED HEADERS */}
       {uiMode === "civilian" ? (
-        <header className="border-b border-white/5 bg-[#090f1d]/90 backdrop-blur-xl px-5 py-3.5 flex items-center justify-between sticky top-0 z-50 shadow-[0_4px_30px_rgba(0,0,0,0.4)]">
+        <header className="border-b border-white/5 bg-[#090f1d]/90 backdrop-blur-xl px-4 py-3.5 flex items-center justify-between sticky top-0 z-40 shadow-[0_4px_30px_rgba(0,0,0,0.4)]">
           <div className="flex items-center gap-3">
             <button
               onClick={() => { soundOn && Audio.click(); setShowLanding(true); }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/10 hover:border-emerald-500/30 hover:bg-emerald-500/5 text-xs text-white/70 hover:text-emerald-400 transition-all font-medium"
+              className="max-md:hidden flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/10 hover:border-emerald-500/30 hover:bg-emerald-500/5 text-xs text-white/70 hover:text-emerald-400 transition-all font-medium font-sans"
             >
               <span>🏡</span> Portal Home
             </button>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-xl">🛡️</span>
-            <span className="text-sm font-extrabold uppercase tracking-[0.15em] bg-clip-text text-transparent bg-gradient-to-r from-[#00ff88] via-[#00e5ff] to-white">
+            <span className="text-xs sm:text-sm font-extrabold uppercase tracking-[0.1em] sm:tracking-[0.15em] bg-clip-text text-transparent bg-gradient-to-r from-[#00ff88] via-[#00e5ff] to-white">
               Public Safety Diagnostic Center
             </span>
-            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-emerald-500/20 bg-emerald-500/5 text-[9px] font-mono uppercase tracking-wider text-emerald-400">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Live Uplink
-            </span>
           </div>
-          <div className="flex items-center gap-3">
+
+          {/* Desktop action buttons */}
+          <div className="hidden md:flex items-center gap-2 flex-wrap">
+            <button onClick={() => { soundOn && Audio.click(); setShowCommandCenter(true); }} className="text-[9px] font-bold uppercase tracking-wider px-2.5 py-1.5 border border-emerald-500/20 hover:border-emerald-500/50 rounded-lg bg-emerald-500/5 text-emerald-400 transition-all hover:scale-105">
+              📊 Dash
+            </button>
             {!imageSrc ? (
               <button
                 onClick={() => { soundOn && Audio.click(); setUiMode("tactical"); }}
                 className="text-[9px] font-bold uppercase tracking-wider px-2.5 py-1.5 border border-emerald-500/20 hover:border-emerald-500/50 rounded-lg bg-emerald-500/5 text-emerald-400 transition-all hover:scale-105"
               >
-                🔄 Switch to Cyber HUD
+                🔄 Switch HUD
               </button>
             ) : (
               <span className="text-[9px] font-bold uppercase tracking-wider px-2.5 py-1.5 border border-white/5 rounded text-white/30">
@@ -326,34 +594,44 @@ export default function Scanner() {
               📋 {history.length > 0 && <span className="text-emerald-400 font-bold">{history.length}</span>}
             </button>
           </div>
+
+          {/* Mobile menu trigger */}
+          <button
+            onClick={() => { soundOn && Audio.click(); setSidebarOpen(true); }}
+            className="md:hidden px-3 py-1.5 border border-white/10 hover:border-emerald-500/40 rounded-lg text-emerald-400 bg-white/5 text-xs font-bold uppercase tracking-wider transition-all"
+          >
+            ☰ Menu
+          </button>
         </header>
       ) : (
-        <header className="border-b border-[#00ff88]/20 bg-black/60 backdrop-blur-md px-5 py-3.5 flex items-center justify-between sticky top-0 z-50 shadow-[0_2px_20px_rgba(0,255,136,0.05)]">
+        <header className="border-b border-[#00ff88]/20 bg-black/60 backdrop-blur-md px-4 py-3.5 flex items-center justify-between sticky top-0 z-40 shadow-[0_2px_20px_rgba(0,255,136,0.05)] font-mono">
           <div className="flex items-center gap-3">
             <button
               onClick={() => { soundOn && Audio.click(); setShowLanding(true); }}
-              className="text-[10px] font-mono uppercase tracking-wider px-2.5 py-1.5 border border-[#00ff88]/30 hover:border-[#00ff88] text-[#00ff88] hover:bg-[#00ff88]/5 transition-all"
+              className="max-md:hidden text-[9px] uppercase tracking-wider px-2.5 py-1.5 border border-[#00ff88]/30 hover:border-[#00ff88] text-[#00ff88] hover:bg-[#00ff88]/5 transition-all"
             >
               [ PORTAL_SYS ]
             </button>
-          </div>
-          <div className="flex items-center gap-3 font-mono">
-            <span className="text-sm font-bold tracking-[0.2em] uppercase text-[#00ff88] glow-text">
+            <span className="text-xs sm:text-sm font-bold tracking-[0.15em] sm:tracking-[0.2em] uppercase text-[#00ff88] glow-text">
               OSINT SCANNER // OMEGA-NODE_SYS
             </span>
-            <span className="text-[10px] opacity-40 uppercase tracking-widest">[ UPLINK: DECRYPTED ]</span>
           </div>
-          <div className="flex items-center gap-3 font-mono">
+
+          {/* Desktop action buttons */}
+          <div className="hidden md:flex items-center gap-2 font-mono flex-wrap">
+            <button onClick={() => { soundOn && Audio.click(); setShowCommandCenter(true); }} className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1.5 border border-[#00ff88]/30 hover:border-[#00ff88] rounded bg-[#00ff88]/5 text-[#00ff88] transition-all">
+              [ COMMAND_CENTER ]
+            </button>
             {!imageSrc ? (
               <button
                 onClick={() => { soundOn && Audio.click(); setUiMode("civilian"); }}
                 className="text-[9px] font-bold uppercase tracking-wider px-2.5 py-1.5 border border-[#00ff88]/30 hover:border-[#00ff88] rounded bg-[#00ff88]/5 text-[#00ff88] transition-all"
               >
-                🔄 CIVILIAN MODE
+                🔄 CIVILIAN
               </button>
             ) : (
-              <span className="text-[9px] font-mono uppercase tracking-wider px-2.5 py-1.5 border border-[#00ff88]/10 text-[#00ff88]/20">
-                [ THEME_LOCKED ]
+              <span className="text-[9px] uppercase tracking-wider px-2.5 py-1.5 border border-[#00ff88]/10 text-[#00ff88]/20">
+                [ HUD_LOCKED ]
               </span>
             )}
             <HUDClock />
@@ -364,6 +642,14 @@ export default function Scanner() {
               📋 LOGS: {history.length}
             </button>
           </div>
+
+          {/* Mobile menu trigger */}
+          <button
+            onClick={() => { soundOn && Audio.click(); setSidebarOpen(true); }}
+            className="md:hidden px-3 py-1.5 border border-[#00ff88]/40 hover:border-[#00ff88] bg-black/60 text-[#00ff88] text-[10px] font-bold uppercase tracking-wider transition-all"
+          >
+            [ MENU ]
+          </button>
         </header>
       )}
 
@@ -387,21 +673,28 @@ export default function Scanner() {
                 <div className={`relative w-full max-w-md aspect-[4/3] border-2 rounded-xl overflow-hidden flex flex-col justify-between p-3 ${uiMode === "civilian" ? "border-emerald-500 bg-[#090f1d]" : "border-[#00ff88] bg-black"}`}>
                   
                   {/* Glowing Radar crosshairs and camera recording status */}
-                  <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-black/60 border border-red-500/20 px-2 py-0.5 rounded text-[8px] font-mono text-red-500 tracking-wider">
+                  <div className="absolute top-2 left-2 z-20 flex items-center gap-1.5 bg-black/60 border border-red-500/20 px-2 py-0.5 rounded text-[8px] font-mono text-red-500 tracking-wider">
                     <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-ping" />
                     LIVE OPTICAL STREAM
                   </div>
                   
-                  <div className="absolute inset-0 z-0 pointer-events-none flex items-center justify-center">
-                    <div className={`w-32 h-32 border border-dashed rounded-full animate-spin opacity-20 ${uiMode === "civilian" ? "border-emerald-400" : "border-[#00ff88]"}`} />
-                    <div className={`w-px h-full absolute opacity-10 ${uiMode === "civilian" ? "bg-emerald-400" : "bg-[#00ff88]"}`} />
-                    <div className={`h-px w-full absolute opacity-10 ${uiMode === "civilian" ? "bg-emerald-400" : "bg-[#00ff88]"}`} />
+                  <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center">
+                    <div className={`w-32 h-32 border border-dashed rounded-full animate-spin opacity-40 ${uiMode === "civilian" ? "border-emerald-400" : "border-[#00ff88]"}`} />
+                    <div className={`w-px h-full absolute opacity-20 ${uiMode === "civilian" ? "bg-emerald-400" : "bg-[#00ff88]"}`} />
+                    <div className={`h-px w-full absolute opacity-20 ${uiMode === "civilian" ? "bg-emerald-400" : "bg-[#00ff88]"}`} />
                   </div>
 
-                  <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover rounded-lg absolute inset-0 z-10" />
+                  <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover rounded-lg absolute inset-0 z-10" />
 
                   {/* High-tech capture control buttons */}
                   <div className="absolute bottom-3 left-0 w-full z-20 px-4 flex gap-2">
+                    <button
+                      onClick={toggleCameraLens}
+                      className="px-3 py-2 border border-white/10 hover:border-white/40 bg-black/70 rounded-lg text-xs font-bold uppercase tracking-wider text-white transition-all"
+                      title="Switch Lens"
+                    >
+                      🔄
+                    </button>
                     <button
                       onClick={captureFrame}
                       className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider shadow-lg hover:scale-[1.02] transition-all ${uiMode === "civilian" ? "bg-emerald-400 hover:bg-emerald-500 text-black" : "bg-[#00ff88] hover:bg-[#00ff88]/90 text-black"}`}
@@ -410,7 +703,7 @@ export default function Scanner() {
                     </button>
                     <button
                       onClick={stopCamera}
-                      className="px-4 py-2 border border-white/10 hover:border-red-500/50 bg-black/70 hover:bg-red-500/10 rounded-lg text-xs font-bold uppercase tracking-wider text-red-400 transition-all"
+                      className="px-3 py-2 border border-white/10 hover:border-red-500/50 bg-black/70 hover:bg-red-500/10 rounded-lg text-xs font-bold uppercase tracking-wider text-red-400 transition-all"
                     >
                       Cancel
                     </button>
@@ -436,7 +729,7 @@ export default function Scanner() {
 
               {/* Camera Activation Button (Only when camera feed not already active) */}
               {!cameraActive && (
-                <button onClick={startCamera} className={`text-[10px] uppercase tracking-wider border px-4 py-1.5 rounded transition-all hover:scale-105 ${uiMode === "civilian" ? "border-white/10 text-white/50 hover:text-white hover:bg-white/5" : "border-[#00ff88]/10 hover:border-[#00ff88]/40 hover:bg-[#00ff88]/5"}`}>
+                <button onClick={() => startCamera()} className={`text-[10px] uppercase tracking-wider border px-4 py-1.5 rounded transition-all hover:scale-105 ${uiMode === "civilian" ? "border-white/10 text-white/50 hover:text-white hover:bg-white/5" : "border-[#00ff88]/10 hover:border-[#00ff88]/40 hover:bg-[#00ff88]/5"}`}>
                   📷 Open Live Diagnostic Camera
                 </button>
               )}
@@ -457,9 +750,9 @@ export default function Scanner() {
           )}
         </AnimatePresence>
 
-        {/* REDESIGNED THREE-COLUMN GRID SYSTEM (Desktop view balanced, no empty bottom areas!) */}
+        {/* REDESIGNED THREE-COLUMN GRID SYSTEM (Perfect responsive layout for laptops, desktops, and mobile!) */}
         {imageSrc && (
-          <motion.div initial={{opacity:0}} animate={{opacity:1}} className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
+          <motion.div initial={{opacity:0}} animate={{opacity:1}} className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             
             {/* COLUMN 1: TARGET DISPLAY & SYSTEM LOG CONSOLE */}
             <div className="flex flex-col gap-4">
@@ -495,7 +788,35 @@ export default function Scanner() {
                     <div className={`w-16 h-16 border rounded-full absolute pulse-ring ${uiMode === "civilian" ? "border-white/10" : "border-[#00ff88]"}`}/>
                   </div>
                   {phase==="scanning"&&(
-                    <motion.div className="absolute left-0 w-full h-0.5 z-20" style={{background:uiMode === "civilian" ? "linear-gradient(90deg,transparent,#00ff88,#00ff88,transparent)" : "linear-gradient(90deg,transparent,#ff2244,#ff2244,transparent)",boxShadow:uiMode === "civilian" ? "0 0 30px 10px rgba(0,255,136,0.3)" : "0 0 30px 10px rgba(255,34,68,0.5)"}} animate={{top:["0%","100%","0%"]}} transition={{duration:2.5,repeat:Infinity,ease:"linear"}}/>
+                    <>
+                      <div className="absolute inset-0 hex-grid opacity-30 z-10 pointer-events-none mix-blend-screen" />
+                      <div className="absolute inset-0 matrix-rain z-10 pointer-events-none mix-blend-overlay" />
+                      <motion.div className="absolute left-0 w-full h-0.5 z-20" style={{background:uiMode === "civilian" ? "linear-gradient(90deg,transparent,#00ff88,#00ff88,transparent)" : "linear-gradient(90deg,transparent,#ff2244,#ff2244,transparent)",boxShadow:uiMode === "civilian" ? "0 0 30px 10px rgba(0,255,136,0.3)" : "0 0 30px 10px rgba(255,34,68,0.5)"}} animate={{top:["0%","100%","0%"]}} transition={{duration:2.5,repeat:Infinity,ease:"linear"}}/>
+                    </>
+                  )}
+                  {result && phase==="complete" && (
+                    <motion.div 
+                      initial={{ opacity: 0, scale: 0.9 }} 
+                      animate={{ opacity: 1, scale: 1 }} 
+                      className="absolute inset-0 flex items-center justify-center pointer-events-none z-20"
+                    >
+                      <div 
+                        className="w-[85%] h-[85%] border-2 border-dashed relative animate-pulse transition-colors duration-500"
+                        style={{ borderColor: result.threatColor, boxShadow: `0 0 30px ${result.threatColor}20` }}
+                      >
+                        <div className="absolute top-[-2px] left-[-2px] w-6 h-6 border-t-4 border-l-4" style={{ borderColor: result.threatColor }} />
+                        <div className="absolute top-[-2px] right-[-2px] w-6 h-6 border-t-4 border-r-4" style={{ borderColor: result.threatColor }} />
+                        <div className="absolute bottom-[-2px] left-[-2px] w-6 h-6 border-b-4 border-l-4" style={{ borderColor: result.threatColor }} />
+                        <div className="absolute bottom-[-2px] right-[-2px] w-6 h-6 border-b-4 border-r-4" style={{ borderColor: result.threatColor }} />
+                        
+                        <div 
+                          className="absolute top-2 left-3 font-mono text-[9px] bg-black/90 px-2 py-0.5 border uppercase tracking-wider backdrop-blur-sm"
+                          style={{ borderColor: result.threatColor, color: result.threatColor, textShadow: `0 0 8px ${result.threatColor}80` }}
+                        >
+                          TARGET_LOCKED // {result.targetId} ({result.confidence})
+                        </div>
+                      </div>
+                    </motion.div>
                   )}
                 </div>
                 {phase==="scanning"&&<div className="h-0.5 bg-black/60"><motion.div className={`h-full ${uiMode === "civilian" ? "bg-emerald-500" : "bg-gradient-to-r from-[#00ff88] via-[#00e5ff] to-[#00ff88]"}`} style={{width:`${progress}%`}} transition={{duration:0.3}}/></div>}
@@ -622,6 +943,17 @@ export default function Scanner() {
                         <div><p className="text-[9px] uppercase tracking-wider opacity-35 mb-0.5">Classification</p><p className="font-bold text-sm" style={{color:result.threatColor}}>{result.classification}</p></div>
                         
                         {/* 🌟 UPGRADED MULTIPLE DATA CODES (Origin, safety standoff, and RCS indexes!) */}
+                        {result.exifData && (result.exifData.lat || result.exifData.make) && (
+                          <div className="pt-2.5 border-t border-white/5">
+                            <p className="text-[9px] uppercase tracking-wider opacity-35 mb-1 flex items-center gap-1.5">🌍 Uplink Origin Data (EXIF)</p>
+                            <div className="grid grid-cols-2 gap-2 p-2 rounded bg-black/40 border border-white/5 font-mono text-[9px] opacity-80">
+                              <div>LAT/LON: {result.exifData.lat ? `${result.exifData.lat.toFixed(4)}, ${result.exifData.lon?.toFixed(4)}` : "CLOAKED"}</div>
+                              <div>DEVICE: {result.exifData.make ? `${result.exifData.make} ${result.exifData.model}` : "UNKNOWN"}</div>
+                              <div className="col-span-2">TIMESTAMP: {result.exifData.date || "REDACTED"}</div>
+                            </div>
+                          </div>
+                        )}
+
                         <div className="grid grid-cols-2 gap-3 pt-2.5 border-t border-white/5">
                           <div>
                             <p className="text-[9px] uppercase tracking-wider opacity-35 mb-0.5">Involved Origin</p>
@@ -670,10 +1002,12 @@ export default function Scanner() {
 
                     {/* Bottom Action buttons */}
                     <div className="p-4 border-t border-white/5 bg-black/10 flex gap-2 flex-wrap">
-                      <button onClick={handleExportPDF} className={`flex-1 min-w-[80px] py-2.5 border rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all hover:bg-white/5 ${uiMode === "civilian" ? "border-white/20 text-white" : "border-[#00ff88]/20 text-[#00ff88]"}`}>📄 Export PDF</button>
-                      <button onClick={speakReport} className="flex-1 min-w-[80px] py-2.5 border border-emerald-500/20 hover:border-emerald-500/50 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all hover:bg-[#00ff88]/5 text-emerald-400">🔊 Vocal Readout</button>
+                      <button onClick={handleExportPDF} className={`flex-1 min-w-[60px] py-2.5 border rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all hover:bg-white/5 ${uiMode === "civilian" ? "border-white/20 text-white" : "border-[#00ff88]/20 text-[#00ff88]"}`} title="Export to PDF">📄 PDF</button>
+                      <button onClick={() => { soundOn && Audio.click(); window.print(); }} className={`flex-1 min-w-[60px] py-2.5 border rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all hover:bg-white/5 ${uiMode === "civilian" ? "border-white/20 text-white" : "border-[#00ff88]/20 text-[#00ff88]"}`} title="Print Report">🖨️ Print</button>
+                      <button onClick={() => { navigator.clipboard.writeText(JSON.stringify(result, null, 2)); alert("JSON Payload Copied to Clipboard!"); soundOn && Audio.click(); }} className={`flex-1 min-w-[60px] py-2.5 border rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all hover:bg-white/5 ${uiMode === "civilian" ? "border-white/20 text-white" : "border-[#00ff88]/20 text-[#00ff88]"}`} title="Copy Raw JSON">📋 JSON</button>
+                      <button onClick={speakReport} className="flex-1 min-w-[60px] py-2.5 border border-emerald-500/20 hover:border-emerald-500/50 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all hover:bg-[#00ff88]/5 text-emerald-400">🔊 Vocal</button>
                       <button onClick={reset} className="flex-1 min-w-[80px] py-2.5 border rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all hover:shadow-lg" style={{borderColor:result.threatColor+"30",color:result.threatColor}} onMouseEnter={e=>{e.currentTarget.style.backgroundColor=result.threatColor+"15"}} onMouseLeave={e=>{e.currentTarget.style.backgroundColor="transparent"}}>
-                        New Diagnostic
+                        New Scan
                       </button>
                     </div>
                   </motion.div>

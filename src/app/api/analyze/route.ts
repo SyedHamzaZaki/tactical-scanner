@@ -1,5 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 
+async function fetchWithRetry(url: string, options: RequestInit, retries = 2, delay = 1000): Promise<Response> {
+  for (let i = 0; i <= retries; i++) {
+    try {
+      return await fetch(url, options);
+    } catch (err) {
+      if (i === retries) throw err;
+      console.warn(`[SYS] Fetch to ${url} failed. Retrying in ${delay}ms... (Attempt ${i + 1}/${retries + 1})`, err);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+  throw new Error("Uplink retry exhausted.");
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { imageBase64, mimeType } = await req.json();
@@ -14,7 +27,7 @@ export async function POST(req: NextRequest) {
 
     const dataUrl = `data:${mimeType};base64,${imageBase64}`;
 
-    const groqResponse = await fetch(
+    const groqResponse = await fetchWithRetry(
       "https://api.groq.com/openai/v1/chat/completions",
       {
         method: "POST",
@@ -69,7 +82,7 @@ Be accurate and realistic with the threat level. Most everyday objects should be
             },
           ],
           temperature: 0.3,
-          max_completion_tokens: 1024,
+          max_tokens: 1024,
           response_format: { type: "json_object" },
         }),
       }
@@ -98,7 +111,13 @@ Be accurate and realistic with the threat level. Most everyday objects should be
     return NextResponse.json(parsed);
   } catch (error: unknown) {
     console.error("Analysis error:", error);
-    const message = error instanceof Error ? error.message : "Unknown error";
+    let message = error instanceof Error ? error.message : "Unknown error";
+    
+    // Explicitly intercept connection timeouts or fetch failures to guide user regarding DNS/VPN/Proxy issues
+    if (message.includes("fetch failed") || message.includes("Timeout") || message.includes("CONNECT") || message.includes("ConnectTimeoutError")) {
+      message = "Uplink Timeout: Failed to reach api.groq.com. Please verify your internet connection, network proxy settings, or VPN status.";
+    }
+
     return NextResponse.json(
       { error: `Analysis failed: ${message}` },
       { status: 500 }
