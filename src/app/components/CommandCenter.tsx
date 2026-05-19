@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { ScanRecord } from '../types';
+import { ScanRecord } from './ScanHistory';
 
 interface Props {
   history: ScanRecord[];
